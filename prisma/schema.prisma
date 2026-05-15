@@ -1,0 +1,394 @@
+// VPS LATAM Cloud — Prisma Schema
+// PostgreSQL 15 | Prisma 5.x
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// AUTH & USERS
+// ─────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  passwordHash  String?
+  name          String?
+  avatarUrl     String?
+  role          UserRole  @default(MEMBER)
+  plan          Plan      @default(FREE)
+  suspended     Boolean   @default(false)
+  suspendedAt   DateTime?
+  suspendedBy   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions      Session[]
+  accounts      Account[]
+  memberships   Membership[]
+  projects      Project[]
+  deployments   Deployment[]
+  subscriptions Subscription[]
+  invoices      Invoice[]
+  auditLogs     AuditLog[]
+  backgroundJobs BackgroundJob[]
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String  // "github", "google"
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  tokenExpiry       DateTime?
+  scope             String?
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// TEAMS
+// ─────────────────────────────────────────
+
+model Team {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  projects    Project[]
+}
+
+model Membership {
+  id        String         @id @default(cuid())
+  userId    String
+  teamId    String
+  role      MembershipRole @default(MEMBER)
+  joinedAt  DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([userId])
+  @@index([teamId])
+}
+
+// ─────────────────────────────────────────
+// PROJECTS
+// ─────────────────────────────────────────
+
+model Project {
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  name           String
+  userId         String
+  teamId         String?
+  githubRepoId   Int?
+  githubRepoUrl  String?
+  githubFullName String?       // "owner/repo"
+  defaultBranch  String        @default("main")
+  buildSettings  Json          @default("{}")
+  // { "buildCmd": "npm run build", "startCmd": "node dist/index.js", "port": 3000, "rootDir": "/" }
+  framework      Framework     @default(UNKNOWN)
+  envVars        EnvVar[]
+  status         ProjectStatus @default(INACTIVE)
+  memoryLimit    Int           @default(512)  // MB
+  cpuLimit       Float         @default(0.5)  // cores
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  team        Team?        @relation(fields: [teamId], references: [id])
+  deployments Deployment[]
+  domains     Domain[]
+  metrics     Metric[]
+
+  @@index([userId])
+  @@index([slug])
+  @@index([githubRepoId])
+}
+
+model EnvVar {
+  id          String   @id @default(cuid())
+  projectId   String
+  key         String
+  value       String   // AES-256-GCM encrypted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────
+// DEPLOYMENTS
+// ─────────────────────────────────────────
+
+model Deployment {
+  id           String           @id @default(cuid())
+  projectId    String
+  userId       String
+  commitSha    String?
+  commitMsg    String?
+  branch       String           @default("main")
+  status       DeploymentStatus @default(QUEUED)
+  containerId  String?
+  imageTag     String?
+  port         Int?
+  logsPath     String?          // local file path
+  endpoint     String?          // full URL https://slug.domain.com
+  errorMessage String?
+  buildDuration Int?            // seconds
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  project    Project         @relation(fields: [projectId], references: [id])
+  user       User            @relation(fields: [userId], references: [id])
+  rollbacks  DeploymentRollback[]
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+}
+
+model DeploymentRollback {
+  id               String   @id @default(cuid())
+  deploymentId     String
+  rolledBackFromId String
+  createdAt        DateTime @default(now())
+
+  deployment Deployment @relation(fields: [deploymentId], references: [id])
+}
+
+// ─────────────────────────────────────────
+// DOMAINS
+// ─────────────────────────────────────────
+
+model Domain {
+  id            String      @id @default(cuid())
+  projectId     String
+  domain        String      @unique
+  isCustom      Boolean     @default(false)
+  verified      Boolean     @default(false)
+  verifyToken   String?     // TXT record value
+  sslIssued     Boolean     @default(false)
+  sslIssuedAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([domain])
+}
+
+// ─────────────────────────────────────────
+// BILLING
+// ─────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  stripeCustomerId     String?
+  mercadopagoId        String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  invoices Invoice[]
+
+  @@index([userId])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  userId         String
+  subscriptionId String?
+  amount         Int           // cents
+  currency       String        @default("USD")
+  status         InvoiceStatus @default(DRAFT)
+  pdfUrl         String?
+  stripeInvoiceId String?
+  dueDate        DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// METRICS
+// ─────────────────────────────────────────
+
+model Metric {
+  id               String   @id @default(cuid())
+  projectId        String
+  cpuPercent       Float
+  ramMb            Float
+  transferredBytes BigInt   @default(0)
+  timestamp        DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, timestamp])
+}
+
+// ─────────────────────────────────────────
+// AUDIT & JOBS
+// ─────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   // "project.created", "deployment.started", "user.suspended"
+  metadata  Json     @default("{}")
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model BackgroundJob {
+  id          String    @id @default(cuid())
+  type        String    // "deploy", "collect-metrics", "send-email"
+  status      JobStatus @default(PENDING)
+  payload     Json      @default("{}")
+  result      Json?
+  error       String?
+  retries     Int       @default(0)
+  maxRetries  Int       @default(3)
+  scheduledAt DateTime  @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  userId      String?
+  createdAt   DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  MEMBER
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  BUSINESS
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Framework {
+  NODEJS
+  NEXTJS
+  PYTHON
+  STATIC
+  DOCKER
+  UNKNOWN
+}
+
+enum ProjectStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum DeploymentStatus {
+  QUEUED
+  BUILDING
+  PUSHING
+  STARTING
+  RUNNING
+  STOPPED
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIALING
+  UNPAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}

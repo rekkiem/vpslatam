@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: vpslatam-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vpslatam
+      POSTGRES_USER: vpslatam
+      POSTGRES_PASSWORD: vpslatam_dev_password_123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vpslatam"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_dev_data:

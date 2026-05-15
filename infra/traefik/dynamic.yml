@@ -1,0 +1,29 @@
+# infra/traefik/dynamic.yml
+# Configuración dinámica de Traefik (middlewares globales)
+
+http:
+  middlewares:
+    # HTTPS redirect (referenciado desde docker-compose labels)
+    https-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+    # Security headers para el dashboard y API
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        contentTypeNosniff: true
+        frameDeny: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+
+    # Rate limit global (por IP)
+    global-ratelimit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
