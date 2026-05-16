@@ -4,22 +4,25 @@ import jwt from '@fastify/jwt'
 import { projectRoutes } from '../routes/projects'
 import { prisma } from '../lib/prisma'
 
+const testUser = { sub: 'user-test', email: 't@t.com', role: 'MEMBER', plan: 'PRO' }
+
 async function buildTestServer() {
   const app = Fastify({ logger: false })
   await app.register(jwt, { secret: process.env.JWT_SECRET! })
-  await app.addHook('preHandler', async (req) => {
-    // Inject a fake verified user for all requests
-    req.user = { sub: 'user-test', email: 't@t.com', role: 'MEMBER', plan: 'PRO', iat: 0, exp: 9999999999 }
-  })
   await app.register(projectRoutes, { prefix: '/projects' })
   await app.ready()
   return app
+}
+
+function authHeaders(app: Awaited<ReturnType<typeof buildTestServer>>) {
+  return { authorization: `Bearer ${app.jwt.sign(testUser)}` }
 }
 
 const mockProject = {
   id: 'proj-1', slug: 'my-app', name: 'My App',
   userId: 'user-test', teamId: null,
   githubFullName: 'user/my-app', githubRepoId: 123,
+  githubRepoUrl: null,
   defaultBranch: 'main', framework: 'NODEJS' as any,
   buildSettings: { port: 3000 }, envVars: [],
   status: 'ACTIVE' as any, memoryLimit: 512, cpuLimit: 0.5,
@@ -31,13 +34,14 @@ describe('GET /projects', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
     app = await buildTestServer()
   })
 
   it('returns list of projects', async () => {
     vi.mocked(prisma.project.findMany).mockResolvedValue([mockProject] as any)
 
-    const res = await app.inject({ method: 'GET', url: '/projects' })
+    const res = await app.inject({ method: 'GET', url: '/projects', headers: authHeaders(app) })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toHaveLength(1)
     expect(res.json()[0].slug).toBe('my-app')
@@ -46,7 +50,7 @@ describe('GET /projects', () => {
   it('returns empty array when no projects', async () => {
     vi.mocked(prisma.project.findMany).mockResolvedValue([])
 
-    const res = await app.inject({ method: 'GET', url: '/projects' })
+    const res = await app.inject({ method: 'GET', url: '/projects', headers: authHeaders(app) })
     expect(res.statusCode).toBe(200)
     expect(res.json()).toHaveLength(0)
   })
@@ -57,6 +61,7 @@ describe('POST /projects (create)', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
     app = await buildTestServer()
   })
 
@@ -75,6 +80,7 @@ describe('POST /projects (create)', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/projects',
+      headers: authHeaders(app),
       payload: {
         name: 'My App',
         githubFullName: 'user/my-app',
@@ -94,6 +100,7 @@ describe('POST /projects (create)', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/projects',
+      headers: authHeaders(app),
       payload: {
         name: 'One More App',
         githubFullName: 'user/one-more',
@@ -104,7 +111,7 @@ describe('POST /projects (create)', () => {
     })
 
     expect(res.statusCode).toBe(402)
-    expect(res.json().error).toContain('plan')
+    expect(res.json().error).toMatch(/plan/i)
   })
 
   it('returns 400 for invalid github repo format', async () => {
@@ -112,6 +119,7 @@ describe('POST /projects (create)', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/projects',
+      headers: authHeaders(app),
       payload: {
         name: 'Bad',
         githubFullName: 'not-valid-format',
@@ -130,6 +138,7 @@ describe('POST /projects (create)', () => {
 
     const res = await app.inject({
       method: 'POST', url: '/projects',
+      headers: authHeaders(app),
       payload: {
         name: 'App',
         githubFullName: 'user/app',
@@ -149,6 +158,7 @@ describe('DELETE /projects/:slug', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
     app = await buildTestServer()
   })
 
@@ -159,7 +169,7 @@ describe('DELETE /projects/:slug', () => {
     })
     vi.mocked(prisma.auditLog.create).mockResolvedValue({} as any)
 
-    const res = await app.inject({ method: 'DELETE', url: '/projects/my-app' })
+    const res = await app.inject({ method: 'DELETE', url: '/projects/my-app', headers: authHeaders(app) })
 
     expect(res.statusCode).toBe(200)
     expect(res.json().ok).toBe(true)
@@ -171,7 +181,7 @@ describe('DELETE /projects/:slug', () => {
   it('returns 404 for non-existent project', async () => {
     vi.mocked(prisma.project.findFirst).mockResolvedValue(null)
 
-    const res = await app.inject({ method: 'DELETE', url: '/projects/no-such-project' })
+    const res = await app.inject({ method: 'DELETE', url: '/projects/no-such-project', headers: authHeaders(app) })
     expect(res.statusCode).toBe(404)
   })
 })
@@ -181,6 +191,7 @@ describe('PUT /projects/:slug/env', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
     app = await buildTestServer()
   })
 
@@ -190,6 +201,7 @@ describe('PUT /projects/:slug/env', () => {
 
     const res = await app.inject({
       method: 'PUT', url: '/projects/my-app/env',
+      headers: authHeaders(app),
       payload: {
         vars: [
           { key: 'DATABASE_URL', value: 'postgres://...' },
@@ -207,6 +219,7 @@ describe('PUT /projects/:slug/env', () => {
 
     const res = await app.inject({
       method: 'PUT', url: '/projects/my-app/env',
+      headers: authHeaders(app),
       payload: { vars: [{ key: 'lowercase_key', value: 'value' }] },
     })
 

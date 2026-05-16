@@ -7,16 +7,26 @@ import { prisma } from '../lib/prisma'
 async function buildAdminServer(role = 'SUPER_ADMIN') {
   const app = Fastify({ logger: false })
   await app.register(jwt, { secret: process.env.JWT_SECRET! })
-  await app.addHook('preHandler', async (req) => {
-    req.user = { sub: 'admin-user', email: 'admin@t.com', role, plan: 'BUSINESS', iat: 0, exp: 9999999999 }
-  })
   await app.register(adminRoutes, { prefix: '/admin' })
   await app.ready()
   return app
 }
 
+function authHeaders(app: Awaited<ReturnType<typeof buildAdminServer>>, role = 'SUPER_ADMIN') {
+  return {
+    authorization: `Bearer ${app.jwt.sign({
+      sub: 'admin-user',
+      email: 'admin@t.com',
+      role,
+      plan: 'BUSINESS',
+    })}`,
+  }
+}
+
 describe('Admin routes', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   describe('GET /admin/stats', () => {
     it('returns system stats for admin', async () => {
@@ -30,7 +40,13 @@ describe('Admin routes', () => {
       vi.mocked(prisma.invoice.aggregate).mockResolvedValue({ _sum: { amount: 50000 } } as any)
       vi.mocked(prisma.subscription.count).mockResolvedValue(12)
 
-      const res = await app.inject({ method: 'GET', url: '/admin/stats' })
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/admin/stats',
+        headers: authHeaders(app, 'SUPER_ADMIN'),
+      })
       expect(res.statusCode).toBe(200)
       const body = res.json()
       expect(body.users.total).toBe(100)
@@ -41,7 +57,12 @@ describe('Admin routes', () => {
 
     it('blocks non-admin users', async () => {
       const app = await buildAdminServer('MEMBER')
-      const res = await app.inject({ method: 'GET', url: '/admin/stats' })
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ suspended: false } as any)
+      const res = await app.inject({
+        method: 'GET',
+        url: '/admin/stats',
+        headers: authHeaders(app, 'MEMBER'),
+      })
       expect(res.statusCode).toBe(403)
     })
   })
@@ -60,6 +81,7 @@ describe('Admin routes', () => {
 
       const res = await app.inject({
         method: 'POST', url: '/admin/users/user-bad/suspend',
+        headers: authHeaders(app, 'SUPER_ADMIN'),
         payload: { reason: 'Spam' },
       })
       expect(res.statusCode).toBe(200)
@@ -79,6 +101,7 @@ describe('Admin routes', () => {
 
       const res = await app.inject({
         method: 'POST', url: '/admin/users/other-admin/suspend',
+        headers: authHeaders(app, 'SUPER_ADMIN'),
         payload: {},
       })
       expect(res.statusCode).toBe(400)

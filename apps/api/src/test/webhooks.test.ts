@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import Fastify from 'fastify'
-import rawBody from '@fastify/raw-body'
+import rawBody from 'fastify-raw-body'
 import crypto from 'crypto'
 import { webhookRoutes } from '../routes/webhooks'
 import { prisma } from '../lib/prisma'
@@ -31,7 +31,7 @@ describe('POST /webhooks/github', () => {
   it('returns 400 without signature', async () => {
     const res = await app.inject({
       method: 'POST', url: '/webhooks/github',
-      headers: { 'x-github-event': 'push' },
+      headers: { 'x-github-event': 'push', 'content-type': 'application/json' },
       payload: JSON.stringify({ ref: 'refs/heads/main' }),
     })
     expect(res.statusCode).toBe(400)

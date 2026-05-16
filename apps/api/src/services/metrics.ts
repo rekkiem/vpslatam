@@ -53,7 +53,7 @@ export async function collectMetrics(): Promise<void> {
   }> = []
 
   await Promise.allSettled(
-    projects.map(async (project) => {
+    projects.map(async (project: { id: string; slug: string }) => {
       const stats = await getContainerStats(`vpslatam-${project.slug}`)
       if (!stats) return
 

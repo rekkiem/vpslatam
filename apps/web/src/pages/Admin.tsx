@@ -14,26 +14,58 @@ const PLAN_COLORS: Record<string, string> = {
   BUSINESS: 'bg-amber-800 text-amber-200',
 }
 
+interface AdminStats {
+  users: { total: number; active: number }
+  projects: { total: number }
+  revenue: { total?: number | null }
+}
+
+interface AdminUser {
+  id: string
+  email: string
+  name?: string | null
+  plan: string
+  suspended: boolean
+  _count?: { projects?: number }
+}
+
+interface AdminUsersResponse {
+  users: AdminUser[]
+  total: number
+  pages: number
+}
+
+interface AuditLog {
+  id: string
+  action: string
+  createdAt: string
+  user?: { email?: string | null } | null
+}
+
+interface AuditLogsResponse {
+  logs: AuditLog[]
+}
+
 export default function AdminPage() {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<AdminStats>({
     queryKey: ['admin-stats'],
     queryFn: adminApi.stats,
     refetchInterval: 30_000,
   })
 
-  const { data: usersData } = useQuery({
+  const { data: usersData } = useQuery<AdminUsersResponse>({
     queryKey: ['admin-users', page, search],
     queryFn: () => adminApi.users(page, search),
     placeholderData: prev => prev,
   })
 
-  const { data: auditData } = useQuery({
+  const { data: auditData } = useQuery<AuditLogsResponse>({
     queryKey: ['admin-audit'],
-    queryFn: adminApi.auditLogs,
+    queryFn: () => adminApi.auditLogs(),
   })
 
   const suspend = useMutation({
@@ -101,7 +133,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
-                  {(usersData?.users ?? []).map((u: any) => (
+                  {(usersData?.users ?? []).map((u) => (
                     <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-4 py-3">
                         <p className="text-xs font-medium text-white truncate max-w-[140px]">{u.name ?? '—'}</p>
@@ -165,7 +197,7 @@ export default function AdminPage() {
         <div>
           <h2 className="text-sm font-semibold text-white mb-4">Audit Log</h2>
           <div className="bg-slate-900 border border-slate-800 rounded-xl max-h-[480px] overflow-y-auto">
-            {(auditData?.logs ?? []).map((log: any) => (
+            {(auditData?.logs ?? []).map((log) => (
               <div key={log.id} className="flex items-start gap-3 px-4 py-3 border-b border-slate-800/50 last:border-0">
                 <div className="w-1.5 h-1.5 rounded-full bg-violet-500 mt-1.5 shrink-0" />
                 <div className="min-w-0">

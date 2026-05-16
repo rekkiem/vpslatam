@@ -7,7 +7,7 @@ import { encrypt, decrypt } from '../lib/crypto'
 import { detectFramework } from '../services/detect-framework'
 import { slugify } from '../utils/slugify'
 import { config } from '../config'
-import got from 'got'
+import { requestJson } from '../lib/http'
 
 const PLAN_LIMITS = {
   FREE:     { maxProjects: 1,  memoryMb: 512,  cpuCores: 0.25 },
@@ -58,7 +58,7 @@ export async function projectRoutes(fastify: FastifyInstance) {
 
   // ── Create project ────────────────────────────────────────
   fastify.post('/', async (req, reply) => {
-    const body = z.object({
+    const result = z.object({
       name: z.string().min(2).max(60),
       githubFullName: z.string().regex(/^[\w-]+\/[\w.-]+$/),
       githubRepoId: z.number(),
@@ -69,7 +69,13 @@ export async function projectRoutes(fastify: FastifyInstance) {
         port: z.number().int().min(1).max(65535).optional(),
         rootDir: z.string().default('/'),
       }).default({}),
-    }).parse(req.body)
+    }).safeParse(req.body)
+
+    if (!result.success) {
+      return reply.code(400).send({ error: result.error.issues[0]?.message ?? 'Invalid input' })
+    }
+
+    const body = result.data
 
     // Enforce plan limits
     const plan = req.user.plan as keyof typeof PLAN_LIMITS
@@ -124,9 +130,10 @@ export async function projectRoutes(fastify: FastifyInstance) {
 
     // Register GitHub webhook
     try {
-      await got.post(
+      await requestJson(
         `https://api.github.com/repos/${body.githubFullName}/hooks`,
         {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${account.accessToken}`,
             Accept: 'application/vnd.github+json',
@@ -154,11 +161,17 @@ export async function projectRoutes(fastify: FastifyInstance) {
   // ── Update project ────────────────────────────────────────
   fastify.patch('/:slug', async (req, reply) => {
     const { slug } = req.params as { slug: string }
-    const body = z.object({
+    const result = z.object({
       name: z.string().min(2).max(60).optional(),
       buildSettings: z.record(z.any()).optional(),
       branch: z.string().optional(),
-    }).parse(req.body)
+    }).safeParse(req.body)
+
+    if (!result.success) {
+      return reply.code(400).send({ error: result.error.issues[0]?.message ?? 'Invalid input' })
+    }
+
+    const body = result.data
 
     const project = await prisma.project.findFirst({ where: { slug, userId: req.user.sub } })
     if (!project) return reply.code(404).send({ error: 'Project not found' })
@@ -194,21 +207,31 @@ export async function projectRoutes(fastify: FastifyInstance) {
     })
     if (!project) return reply.code(404).send({ error: 'Project not found' })
     // Return keys only — never plaintext values in list
-    return project.envVars.map((v) => ({ id: v.id, key: v.key, updatedAt: v.updatedAt }))
+    return project.envVars.map((v: { id: string; key: string; updatedAt: Date }) => ({
+      id: v.id,
+      key: v.key,
+      updatedAt: v.updatedAt,
+    }))
   })
 
   fastify.put('/:slug/env', async (req, reply) => {
     const { slug } = req.params as { slug: string }
-    const body = z.object({
+    const result = z.object({
       vars: z.array(z.object({ key: z.string().regex(/^[A-Z_][A-Z0-9_]*$/), value: z.string() })),
-    }).parse(req.body)
+    }).safeParse(req.body)
+
+    if (!result.success) {
+      return reply.code(400).send({ error: result.error.issues[0]?.message ?? 'Invalid input' })
+    }
+
+    const body = result.data
 
     const project = await prisma.project.findFirst({ where: { slug, userId: req.user.sub } })
     if (!project) return reply.code(404).send({ error: 'Project not found' })
 
     // Upsert env vars
     await prisma.$transaction(
-      body.vars.map((v) =>
+      body.vars.map((v: { key: string; value: string }) =>
         prisma.envVar.upsert({
           where: { projectId_key: { projectId: project.id, key: v.key } },
           update: { value: encrypt(v.value) },

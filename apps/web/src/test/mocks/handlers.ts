@@ -86,6 +86,8 @@ export const handlers = [
     return HttpResponse.json({ error: 'Session expired' }, { status: 401 })
   }),
 
+  http.post(`${API}/auth/logout`, () => HttpResponse.json({ ok: true })),
+
   http.get(`${API}/auth/github/repos`, () =>
     HttpResponse.json([
       {

@@ -120,7 +120,7 @@ function ProjectCard({ project }: { project: any }) {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
-  const { data: projects = [], isLoading } = useQuery({
+  const { data: projects = [], isPending } = useQuery({
     queryKey: ['projects'],
     queryFn: projectsApi.list,
     refetchInterval: 5000,
@@ -162,7 +162,7 @@ export default function DashboardPage() {
       )}
 
       {/* Projects grid */}
-      {isLoading ? (
+      {isPending ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-5 animate-pulse">

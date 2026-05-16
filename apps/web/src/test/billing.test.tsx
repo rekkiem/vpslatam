@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  createMemoryHistory, createRootRoute, createRoute,
+  createMemoryHistory, createRootRoute, createRoute, Outlet,
   createRouter, RouterProvider,
 } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
@@ -12,9 +12,12 @@ import { useAuthStore } from '../store/auth'
 
 function makeRouter(component: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const root = createRootRoute({ component: () => component as any })
+  const root = createRootRoute({ component: Outlet })
   const index = createRoute({ getParentRoute: () => root, path: '/', component: () => component as any })
-  const router = createRouter({ routeTree: root.addChildren([index]), history: createMemoryHistory() })
+  const router = createRouter({
+    routeTree: root.addChildren([index]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
   return <QueryClientProvider client={qc}><RouterProvider router={router} /></QueryClientProvider>
 }
 
@@ -63,12 +66,6 @@ describe('BillingPage', () => {
         return HttpResponse.json({ url: 'https://checkout.stripe.com/mock?plan=STARTER' })
       })
     )
-
-    // Mock window.location.href assignment
-    Object.defineProperty(window, 'location', {
-      writable: true,
-      value: { ...window.location, href: '' },
-    })
 
     render(makeRouter(<BillingPage />))
     await waitFor(() => screen.getAllByText('Actualizar'))

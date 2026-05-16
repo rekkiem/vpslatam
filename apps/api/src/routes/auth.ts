@@ -7,7 +7,7 @@ import { config } from '../config'
 import { requireAuth } from '../middleware/auth'
 import { auditLog } from '../services/audit'
 import { v4 as uuid } from 'uuid'
-import got from 'got'
+import { requestJson } from '../lib/http'
 
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize'
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token'
@@ -182,7 +182,8 @@ export async function authRoutes(fastify: FastifyInstance) {
 
     let tokenRes: { access_token: string; scope: string }
     try {
-      tokenRes = await got.post(GITHUB_TOKEN_URL, {
+      tokenRes = await requestJson<{ access_token: string; scope: string }>(GITHUB_TOKEN_URL, {
+        method: 'POST',
         json: {
           client_id: config.GITHUB_CLIENT_ID,
           client_secret: config.GITHUB_CLIENT_SECRET,
@@ -190,8 +191,8 @@ export async function authRoutes(fastify: FastifyInstance) {
           redirect_uri: `${config.API_URL}/api/auth/github/callback`,
         },
         headers: { Accept: 'application/json' },
-        timeout: { request: 10_000 },
-      }).json<{ access_token: string; scope: string }>()
+        timeoutMs: 10_000,
+      })
     } catch {
       return reply.redirect(302, `${config.FRONTEND_URL}/login?error=github_token`)
     }
@@ -212,8 +213,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       name: string | null; avatar_url: string
     }
     try {
-      ghUser = await got(GITHUB_USER_URL, { headers: ghHeaders, timeout: { request: 10_000 } })
-        .json()
+      ghUser = await requestJson(GITHUB_USER_URL, { headers: ghHeaders, timeoutMs: 10_000 })
     } catch {
       return reply.redirect(302, `${config.FRONTEND_URL}/login?error=github_user`)
     }
@@ -222,8 +222,10 @@ export async function authRoutes(fastify: FastifyInstance) {
     let email = ghUser.email
     if (!email) {
       try {
-        const emails = await got(GITHUB_EMAIL_URL, { headers: ghHeaders })
-          .json<Array<{ email: string; primary: boolean; verified: boolean }>>()
+        const emails = await requestJson<Array<{ email: string; primary: boolean; verified: boolean }>>(
+          GITHUB_EMAIL_URL,
+          { headers: ghHeaders, timeoutMs: 10_000 }
+        )
         email = emails.find(e => e.primary && e.verified)?.email ?? null
       } catch { /* fallback below */ }
     }
@@ -320,19 +322,19 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     const page = Number((req.query as any).page) || 1
-    const repos = await got('https://api.github.com/user/repos', {
+    const repos = await requestJson<Array<{
+      id: number; name: string; full_name: string; private: boolean
+      html_url: string; default_branch: string; language: string | null
+      updated_at: string; description: string | null; pushed_at: string
+    }>>('https://api.github.com/user/repos', {
       headers: {
         Authorization: `Bearer ${account.accessToken}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
       searchParams: { per_page: 30, page, sort: 'updated', type: 'all' },
-      timeout: { request: 15_000 },
-    }).json<Array<{
-      id: number; name: string; full_name: string; private: boolean
-      html_url: string; default_branch: string; language: string | null
-      updated_at: string; description: string | null; pushed_at: string
-    }>>()
+      timeoutMs: 15_000,
+    })
 
     return repos.map(r => ({
       id: r.id, name: r.name, fullName: r.full_name,

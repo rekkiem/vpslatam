@@ -7,6 +7,7 @@ import { server } from './mocks/server'
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }))
 afterEach(() => {
   server.resetHandlers()
+  localStorage.clear()
   cleanup()
 })
 afterAll(() => server.close())
@@ -29,3 +30,5 @@ Object.defineProperty(window, 'location', {
   writable: true,
   value: { ...window.location, replace: vi.fn(), href: 'http://localhost/' },
 })
+
+Object.defineProperty(window, 'scrollTo', { value: vi.fn(), writable: true })

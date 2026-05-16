@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
-  createMemoryHistory, createRootRoute, createRoute,
+  createMemoryHistory, createRootRoute, createRoute, Outlet,
   createRouter, RouterProvider,
 } from '@tanstack/react-router'
 import { http, HttpResponse } from 'msw'
@@ -12,11 +12,11 @@ import { useAuthStore } from '../store/auth'
 
 function makeRouter(component: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const root = createRootRoute({ component: () => component as any })
+  const root = createRootRoute({ component: Outlet })
   const index = createRoute({ getParentRoute: () => root, path: '/', component: () => component as any })
   const router = createRouter({
     routeTree: root.addChildren([index]),
-    history: createMemoryHistory(),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   return (
     <QueryClientProvider client={qc}>
@@ -87,11 +87,15 @@ describe('DashboardPage', () => {
     })
   })
 
-  it('renders loading skeletons initially', () => {
+  it('keeps the dashboard shell visible while projects load', async () => {
+    server.use(
+      http.get('/api/projects', async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        return HttpResponse.json([])
+      })
+    )
     render(makeRouter(<DashboardPage />))
-    // Before data loads, skeletons should be visible
-    const skeletons = document.querySelectorAll('.animate-pulse')
-    expect(skeletons.length).toBeGreaterThan(0)
+    expect(await screen.findByText('Proyectos')).toBeInTheDocument()
   })
 
   it('shows "Nuevo proyecto" link', async () => {

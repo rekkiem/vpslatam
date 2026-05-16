@@ -6,8 +6,8 @@ export interface JWTPayload {
   email: string
   role: string
   plan: string
-  iat: number
-  exp: number
+  iat?: number
+  exp?: number
 }
 
 declare module '@fastify/jwt' {

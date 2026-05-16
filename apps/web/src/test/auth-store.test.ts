@@ -40,12 +40,17 @@ describe('useAuthStore', () => {
 
     it('throws on invalid credentials', async () => {
       const { result } = renderHook(() => useAuthStore())
+      let error: unknown
 
-      await expect(
-        act(async () => {
+      await act(async () => {
+        try {
           await result.current.login('test@test.com', 'wrong')
-        })
-      ).rejects.toBeDefined()
+        } catch (err) {
+          error = err
+        }
+      })
+
+      expect(error).toBeDefined()
     })
   })
 

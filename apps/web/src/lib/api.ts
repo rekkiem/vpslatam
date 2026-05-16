@@ -9,7 +9,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestInit & { skipAuthRefresh?: boolean } = {}
+): Promise<T> {
   const token = localStorage.getItem('access_token')
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -19,7 +22,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
 
-  if (res.status === 401) {
+  if (res.status === 401 && !options.skipAuthRefresh) {
     const refreshed = await tryRefresh()
     if (refreshed) {
       const newToken = localStorage.getItem('access_token')
@@ -70,11 +73,11 @@ async function tryRefresh(): Promise<boolean> {
 export const authApi = {
   register: (body: { email: string; password: string; name: string }) =>
     request<{ accessToken: string; refreshToken: string; user: any }>('/auth/register', {
-      method: 'POST', body: JSON.stringify(body),
+      method: 'POST', body: JSON.stringify(body), skipAuthRefresh: true,
     }),
   login: (body: { email: string; password: string }) =>
     request<{ accessToken: string; refreshToken: string; user: any }>('/auth/login', {
-      method: 'POST', body: JSON.stringify(body),
+      method: 'POST', body: JSON.stringify(body), skipAuthRefresh: true,
     }),
   me: () => request<any>('/auth/me'),
   githubRepos: (page = 1) => request<any[]>(`/auth/github/repos?page=${page}`),

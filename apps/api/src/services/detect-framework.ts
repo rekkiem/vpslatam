@@ -1,5 +1,5 @@
 // FIX BUG-22: add timeouts to all GitHub API calls
-import got from 'got'
+import { requestJson, requestOk } from '../lib/http'
 
 type Framework = 'NODEJS' | 'NEXTJS' | 'PYTHON' | 'STATIC' | 'DOCKER' | 'UNKNOWN'
 
@@ -10,7 +10,7 @@ async function fileExists(
   fullName: string, branch: string, filePath: string, token: string
 ): Promise<boolean> {
   try {
-    await got(
+    return await requestOk(
       `${GITHUB_API}/repos/${fullName}/contents/${encodeURIComponent(filePath)}`,
       {
         searchParams: { ref: branch },
@@ -19,10 +19,9 @@ async function fileExists(
           Accept: 'application/vnd.github.v3+json',
           'X-GitHub-Api-Version': '2022-11-28',
         },
-        timeout: { request: TIMEOUT_MS },
+        timeoutMs: TIMEOUT_MS,
       }
     )
-    return true
   } catch {
     return false
   }
@@ -32,7 +31,7 @@ async function fetchFileContent(
   fullName: string, branch: string, filePath: string, token: string
 ): Promise<string | null> {
   try {
-    const res = await got(
+    const res = await requestJson<{ content: string; encoding: string }>(
       `${GITHUB_API}/repos/${fullName}/contents/${encodeURIComponent(filePath)}`,
       {
         searchParams: { ref: branch },
@@ -40,9 +39,9 @@ async function fetchFileContent(
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github.v3+json',
         },
-        timeout: { request: TIMEOUT_MS },
+        timeoutMs: TIMEOUT_MS,
       }
-    ).json<{ content: string; encoding: string }>()
+    )
 
     if (res.encoding === 'base64') {
       return Buffer.from(res.content.replace(/\n/g, ''), 'base64').toString('utf8')

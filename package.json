@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "pnpm --parallel --filter './apps/*' run dev",
-    "build": "pnpm --filter './apps/*' run build",
+    "dev": "pnpm --parallel --filter @vpslatam/api --filter @vpslatam/web run dev",
+    "build": "pnpm --filter @vpslatam/api --filter @vpslatam/web run build",
     "db:migrate": "pnpm --filter @vpslatam/api run db:migrate",
     "db:generate": "pnpm --filter @vpslatam/api run db:generate",
     "db:studio": "pnpm --filter @vpslatam/api run db:studio"
   },
   "devDependencies": {
-    "prisma": "^6.19.3",
+    "prisma": "^5.22.0",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0"
   }
 }

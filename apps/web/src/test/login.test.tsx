@@ -2,21 +2,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import LoginPage from '../pages/Login'
 import { useAuthStore } from '../store/auth'
 
+const navigate = vi.fn()
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+}))
+
 // ── Test helpers ──────────────────────────────────────────────
-function wrapWithRouter(component: React.ReactNode) {
+function wrapWithProviders(component: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const root = createRootRoute({ component: () => component as any })
-  const index = createRoute({ getParentRoute: () => root, path: '/', component: () => component as any })
-  const router = createRouter({ routeTree: root.addChildren([index]), history: createMemoryHistory() })
-  return (
-    <QueryClientProvider client={qc}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  )
+  return <QueryClientProvider client={qc}>{component}</QueryClientProvider>
 }
 
 describe('LoginPage', () => {
@@ -27,14 +25,14 @@ describe('LoginPage', () => {
   })
 
   it('renders login form by default', () => {
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
     expect(screen.getByPlaceholderText('tu@email.com')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /iniciar sesión/i })).toBeInTheDocument()
   })
 
   it('toggles to register form', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     await user.click(screen.getByText('Crear cuenta gratis'))
 
@@ -44,7 +42,7 @@ describe('LoginPage', () => {
 
   it('shows error on invalid credentials', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     await user.type(screen.getByPlaceholderText('tu@email.com'), 'test@test.com')
     await user.type(screen.getByPlaceholderText('••••••••'), 'wrong-password')
@@ -57,7 +55,7 @@ describe('LoginPage', () => {
 
   it('calls login and redirects on success', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     await user.type(screen.getByPlaceholderText('tu@email.com'), 'test@test.com')
     await user.type(screen.getByPlaceholderText('••••••••'), 'password123')
@@ -70,7 +68,7 @@ describe('LoginPage', () => {
 
   it('shows loading state during submission', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     await user.type(screen.getByPlaceholderText('tu@email.com'), 'test@test.com')
     await user.type(screen.getByPlaceholderText('••••••••'), 'password123')
@@ -82,7 +80,7 @@ describe('LoginPage', () => {
 
   it('toggles password visibility', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     const passwordInput = screen.getByPlaceholderText('••••••••')
     expect(passwordInput).toHaveAttribute('type', 'password')
@@ -95,14 +93,14 @@ describe('LoginPage', () => {
   })
 
   it('renders in register mode when mode="register"', () => {
-    render(wrapWithRouter(<LoginPage mode="register" />))
+    render(wrapWithProviders(<LoginPage mode="register" />))
     expect(screen.getByRole('button', { name: /crear cuenta gratis/i })).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/tu nombre/i)).toBeInTheDocument()
   })
 
   it('shows error on duplicate email during register', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage mode="register" />))
+    render(wrapWithProviders(<LoginPage mode="register" />))
 
     await user.type(screen.getByPlaceholderText(/tu nombre/i), 'Test User')
     await user.type(screen.getByPlaceholderText('tu@email.com'), 'exists@test.com')
@@ -116,7 +114,7 @@ describe('LoginPage', () => {
 
   it('submits on Enter key press', async () => {
     const user = userEvent.setup()
-    render(wrapWithRouter(<LoginPage />))
+    render(wrapWithProviders(<LoginPage />))
 
     const emailInput = screen.getByPlaceholderText('tu@email.com')
     const passwordInput = screen.getByPlaceholderText('••••••••')
